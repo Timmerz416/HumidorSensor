@@ -33,7 +33,7 @@ const uint8_t THERMOSTAT_CODE = 8;
 const uint8_t TEMP_12BYTE_CODE = 9;
 
 // Timing variables
-const unsigned long SENSOR_DELAY = 1800000;	// The period between temperature measurements (ms).
+const unsigned long SENSOR_DELAY = 65535;	// The period between temperature measurements (ms) - maxed out.
 const unsigned long STARTUP_DELAY = 3000;	// The period allowed for component warmup and initialization (ms).
 const unsigned long COMM_DELAY = 1000;		// The period allowed for XBee communications to initialize/finalize (ms).
 
