@@ -4,6 +4,7 @@
  Author:	Tim Lampman_2
 */
 
+#include <MAX1704.h>
 #include <Wire.h>
 #include <HTU21D.h>
 #include <JeeLib.h>
@@ -33,7 +34,8 @@ const uint8_t THERMOSTAT_CODE = 8;
 const uint8_t TEMP_12BYTE_CODE = 9;
 
 // Timing variables
-const unsigned long SENSOR_DELAY = 65535;	// The period between temperature measurements (ms) - maxed out.
+const unsigned long SENSOR_DELAY = 60000;	// The sleep period (ms)
+const unsigned long DELAY_PERIODS = 10;		// The number of sleep periods before updating sensor readings
 const unsigned long STARTUP_DELAY = 3000;	// The period allowed for component warmup and initialization (ms).
 const unsigned long COMM_DELAY = 1000;		// The period allowed for XBee communications to initialize/finalize (ms).
 
@@ -103,7 +105,8 @@ void loop() {
 
 	// Read the humidity
 	FloatConverter Humidity;
-	Humidity.f = airSensor.readHumidity();
+	float raw_humidity = airSensor.readHumidity();
+	Humidity.f = raw_humidity - 0.15*(25.0 - Temperature.f);	// Correction for HTU21D from spec sheet
 
 	//-------------------------------------------------------------------------
 	// SEND DATA THROUGH XBEE
@@ -151,7 +154,7 @@ void loop() {
 	digitalWrite(POWER_PIN, LOW);
 
 	// Cycle delay
-	SmartDelay(SENSOR_DELAY, false);
+	for(int i = 0; i < DELAY_PERIODS; i++) SmartDelay(SENSOR_DELAY, false);
 }
 
 
