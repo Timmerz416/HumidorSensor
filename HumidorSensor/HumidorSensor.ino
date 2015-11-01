@@ -32,6 +32,7 @@ const uint8_t LUX_CODE = 6;
 const uint8_t HEATING_CODE = 7;
 const uint8_t THERMOSTAT_CODE = 8;
 const uint8_t TEMP_12BYTE_CODE = 9;
+const uint8_t BATTERY_SOC_CODE = 10;
 
 // Timing variables
 const unsigned long SENSOR_DELAY = 60000;	// The sleep period (ms)
@@ -41,6 +42,7 @@ const unsigned long COMM_DELAY = 1000;		// The period allowed for XBee communica
 
 // Sensor objects
 HTU21D airSensor;
+MAX1704 batterySensor;
 
 // Local pins
 const int LOCAL_POWER_PIN = A0;	// The analog pin that measures the power supply
@@ -69,6 +71,11 @@ void setup() {
 	// Setup the serial communications
 	Serial.begin(9600);
 	Serial.println("Starting service...");
+	delay(1000);
+
+	// Start the power monitor
+	batterySensor.reset();		// Do a power reset
+	batterySensor.quickStart();	// Quickly assess the state of charge (SOC)
 }
 
 //=============================================================================
@@ -94,10 +101,8 @@ void loop() {
 	//-------------------------------------------------------------------------
 	// COLLECT SENSOR DATA
 	//-------------------------------------------------------------------------
-	// Read the power
-	FloatConverter Power;
-	int powerSignal = analogRead(LOCAL_POWER_PIN);
-	Power.f = 3.3*powerSignal / 1023.0;
+	// Wake the battery sensor
+	batterySensor.awake();
 
 	// Read the temperature
 	FloatConverter Temperature;
@@ -108,20 +113,33 @@ void loop() {
 	float raw_humidity = airSensor.readHumidity();
 	Humidity.f = raw_humidity - 0.15*(25.0 - Temperature.f);	// Correction for HTU21D from spec sheet
 
+	// Read the battery voltage
+	FloatConverter Power;
+	Power.f = batterySensor.voltage();
+
+	// Read the battery SOC
+	FloatConverter SOC;
+	SOC.f = batterySensor.stateOfCharge();
+
+	// Sleep the battery sensor
+	batterySensor.sleep();
+
 	//-------------------------------------------------------------------------
 	// SEND DATA THROUGH XBEE
 	//-------------------------------------------------------------------------
 	// Create the byte array to pass to the XBee
 	size_t floatBytes = sizeof(float);
-	uint8_t package[1 + 3*(floatBytes + 1)];
+	uint8_t package[1 + 4*(floatBytes + 1)];
 	package[0] = CMD_SENSOR_DATA;
 	package[1] = TEMPERATURE_CODE;
 	package[1 + (floatBytes + 1)] = HUMIDITY_CODE;
 	package[1 + 2*(floatBytes + 1)] = POWER_CODE;
+	package[1 + 3*(floatBytes + 1)] = BATTERY_SOC_CODE;
 	for(int i = 0; i < floatBytes; i++) {
 		package[i + 2] = Temperature.b[i];
 		package[i + 2 + (floatBytes + 1)] = Humidity.b[i];
 		package[i + 2 + 2*(floatBytes + 1)] = Power.b[i];
+		package[i + 2 + 3*(floatBytes + 1)] = SOC.b[i];
 	}
 
 	// Send the data package to the coordinator through the XBee
@@ -136,6 +154,8 @@ void loop() {
 	Serial.print(Humidity.f);
 	Serial.print(",");
 	Serial.print(Power.f);
+	Serial.print(",");
+	Serial.print(SOC.f);
 	Serial.print("): ");
 	for(int i = 0; i < sizeof(package); i++) {
 		if(i != 0) Serial.print("-");
