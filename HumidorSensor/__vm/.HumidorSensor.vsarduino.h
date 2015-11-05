@@ -18,6 +18,7 @@
 #define ARDUINO_AVR_UNO
 #define ARDUINO_ARCH_AVR
 #define __cplusplus
+#define __AVR__
 #define __inline__
 #define __asm__(x)
 #define __extension__
@@ -84,5 +85,5 @@ extern "C" void __cxa_pure_virtual() {;}
 #define portOutputRegister(P)
 #define portInputRegister(P)
 #define portModeRegister(P)
-#include <HumidorSensor.ino>
+#include <..\HumidorSensor\HumidorSensor.ino>
 #endif

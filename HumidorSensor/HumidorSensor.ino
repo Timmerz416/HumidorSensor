@@ -11,9 +11,11 @@
 #include <XBee.h>
 #include <AltSoftSerial.h>
 
+// Sleep/Delay behaviour
 ISR(WDT_vect) { Sleepy::watchdogEvent(); } // Setup the watchdog
 
-const bool prefer_sleep = true;
+const bool prefer_sleep = true;	// Specifies whether to use delay (true) or sleep (false) for long delays without sensor power
+const bool high_power = true;	// Specifies whether to use delay (true) or sleep (false) for periods when power supplied to sensors
 
 // XBee variables
 AltSoftSerial xbeeSerial;  // The software serial port for communicating with the Xbee (TX Pin 9, RX Pin 8)
@@ -87,7 +89,8 @@ void loop() {
 	//-------------------------------------------------------------------------
 	// Turn on the power to the attached components
 	digitalWrite(POWER_PIN, HIGH);
-	SmartDelay(STARTUP_DELAY, false);	// Warmup delay
+	SmartDelay(STARTUP_DELAY, high_power);	// Warmup delay
+	batterySensor.awake();	// Wake the battery sensor
 
 	// Connect to the XBee
 	Serial.print("Starting XBee connection...");
@@ -96,14 +99,11 @@ void loop() {
 	Serial.println("FINISHED");
 
 	// Delay while components power up
-	SmartDelay(COMM_DELAY, false);
+	SmartDelay(COMM_DELAY, high_power);
 
 	//-------------------------------------------------------------------------
 	// COLLECT SENSOR DATA
 	//-------------------------------------------------------------------------
-	// Wake the battery sensor
-	batterySensor.awake();
-
 	// Read the temperature
 	FloatConverter Temperature;
 	Temperature.f = airSensor.readTemperature();
@@ -115,7 +115,7 @@ void loop() {
 
 	// Read the battery voltage
 	FloatConverter Power;
-	Power.f = batterySensor.voltage();
+	Power.f = batterySensor.cellVoltage();
 
 	// Read the battery SOC
 	FloatConverter SOC;
@@ -164,7 +164,7 @@ void loop() {
 	Serial.println("");
 
 	// Transmission delay
-	SmartDelay(COMM_DELAY, false);
+	SmartDelay(COMM_DELAY, high_power);
 
 	//-------------------------------------------------------------------------
 	// POWER DOWN COMPONENTS AND WAIT FOR NEXT CYCLE
