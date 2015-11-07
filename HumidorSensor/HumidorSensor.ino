@@ -14,8 +14,8 @@
 // Sleep/Delay behaviour
 ISR(WDT_vect) { Sleepy::watchdogEvent(); } // Setup the watchdog
 
-const bool prefer_sleep = true;	// Specifies whether to use delay (true) or sleep (false) for long delays without sensor power
-const bool high_power = true;	// Specifies whether to use delay (true) or sleep (false) for periods when power supplied to sensors
+const bool prefer_sleep = true;	// Specifies whether to use delay (false) or sleep (true) for long delays without sensor power
+const bool high_power = true;		// Specifies whether to use delay (true) or sleep (false) for periods when power supplied to sensors
 
 // XBee variables
 AltSoftSerial xbeeSerial;  // The software serial port for communicating with the Xbee (TX Pin 9, RX Pin 8)
@@ -58,6 +58,7 @@ union FloatConverter {
 };
 
 void SmartDelay(unsigned long delay_time, bool force_delay);
+void Message(String msg);
 
 //=============================================================================
 // SETUP
@@ -72,10 +73,11 @@ void setup() {
 
 	// Setup the serial communications
 	Serial.begin(9600);
-	Serial.println("Starting service...");
+	Message("Starting Serial...");
 	delay(1000);
 
 	// Start the power monitor
+	Message("Setting up battery monitor");
 	batterySensor.reset();		// Do a power reset
 	batterySensor.quickStart();	// Quickly assess the state of charge (SOC)
 }
@@ -88,15 +90,17 @@ void loop() {
 	// POWER UP COMPONENTS
 	//-------------------------------------------------------------------------
 	// Turn on the power to the attached components
+	Message("Powering up components...");
 	digitalWrite(POWER_PIN, HIGH);
 	SmartDelay(STARTUP_DELAY, high_power);	// Warmup delay
+	Message("Awakening battery sensor");
 	batterySensor.awake();	// Wake the battery sensor
 
 	// Connect to the XBee
-	Serial.print("Starting XBee connection...");
+	Message("Starting XBee connection...");
 	xbeeSerial.begin(9600);
 	localRadio.setSerial(xbeeSerial);
-	Serial.println("FINISHED");
+	Message("FINISHED");
 
 	// Delay while components power up
 	SmartDelay(COMM_DELAY, high_power);
@@ -105,29 +109,36 @@ void loop() {
 	// COLLECT SENSOR DATA
 	//-------------------------------------------------------------------------
 	// Read the temperature
+	Message("Reading tempeature");
 	FloatConverter Temperature;
 	Temperature.f = airSensor.readTemperature();
 
 	// Read the humidity
+	Message("Reading humidity");
 	FloatConverter Humidity;
 	float raw_humidity = airSensor.readHumidity();
-	Humidity.f = raw_humidity - 0.15*(25.0 - Temperature.f);	// Correction for HTU21D from spec sheet
+//	Humidity.f = raw_humidity - 0.15*(25.0 - Temperature.f);	// Correction for HTU21D from spec sheet
+	Humidity.f = raw_humidity;
 
 	// Read the battery voltage
+	Message("Reading battery voltage");
 	FloatConverter Power;
 	Power.f = batterySensor.cellVoltage();
 
 	// Read the battery SOC
+	Message("Reading battery state of charge");
 	FloatConverter SOC;
 	SOC.f = batterySensor.stateOfCharge();
 
 	// Sleep the battery sensor
+	Message("Putting battery sensor to sleep");
 	batterySensor.sleep();
 
 	//-------------------------------------------------------------------------
 	// SEND DATA THROUGH XBEE
 	//-------------------------------------------------------------------------
 	// Create the byte array to pass to the XBee
+	Message("Creating XBee data transmission");
 	size_t floatBytes = sizeof(float);
 	uint8_t package[1 + 4*(floatBytes + 1)];
 	package[0] = CMD_SENSOR_DATA;
@@ -142,38 +153,34 @@ void loop() {
 		package[i + 2 + 3*(floatBytes + 1)] = SOC.b[i];
 	}
 
+	// Create the message text for debugging output
+	String xbee_message = "Sent the following message(" + String(Temperature.f) + "," + Humidity.f + "," + Power.f + "," + SOC.f + "): ";
+	for(int i = 0; i < sizeof(package); i++) {
+		if(i != 0) xbee_message += "-";
+		xbee_message += String(package[i], HEX);
+	}
+	Message(xbee_message);
+
 	// Send the data package to the coordinator through the XBee
+	Message("Sending XBee transmission");
 	XBeeAddress64 address = XBeeAddress64(0x00000000, 0x00000000);
 	ZBTxRequest zbTX = ZBTxRequest(address, package, sizeof(package));
 	localRadio.send(zbTX);
 
-	// Print message to the serial port
-	Serial.print("Sent the following message (");
-	Serial.print(Temperature.f);
-	Serial.print(",");
-	Serial.print(Humidity.f);
-	Serial.print(",");
-	Serial.print(Power.f);
-	Serial.print(",");
-	Serial.print(SOC.f);
-	Serial.print("): ");
-	for(int i = 0; i < sizeof(package); i++) {
-		if(i != 0) Serial.print("-");
-		Serial.print(package[i], HEX);
-	}
-	Serial.println("");
-
 	// Transmission delay
+	Message("Pause while XBee message sent");
 	SmartDelay(COMM_DELAY, high_power);
 
 	//-------------------------------------------------------------------------
 	// POWER DOWN COMPONENTS AND WAIT FOR NEXT CYCLE
 	//-------------------------------------------------------------------------
 	// Turn off the power to the components and sleep
+	Message("Turn off power to components");
 	xbeeSerial.end();	// Turn off the serial communication with the xbee
 	digitalWrite(POWER_PIN, LOW);
 
 	// Cycle delay
+	Message("Sensor delay");
 	for(int i = 0; i < DELAY_PERIODS; i++) SmartDelay(SENSOR_DELAY, false);
 }
 
@@ -187,4 +194,13 @@ void SmartDelay(unsigned long delay_time, bool force_delay) {
 		if(prefer_sleep) Sleepy::loseSomeTime(delay_time);
 		else delay(delay_time);
 	}
+}
+
+//=============================================================================
+// Message
+//=============================================================================
+void Message(String msg) {
+	Serial.print(millis());
+	Serial.print(": ");
+	Serial.println(msg);
 }
